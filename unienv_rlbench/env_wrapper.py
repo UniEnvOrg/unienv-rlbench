@@ -9,6 +9,7 @@ from rlbench.observation_config import ObservationConfig
 from rlbench.action_modes.action_mode import ActionMode, MoveArmThenGripper
 from rlbench.action_modes.arm_action_modes import EndEffectorPoseViaIK, EndEffectorPoseViaPlanning
 from rlbench.backend.observation import Observation
+from rlbench.demo import Demo
 from rlbench.environment import Environment as RLBenchEnvironment
 from rlbench.task_environment import TaskEnvironment as RLBenchTaskEnvironment
 
@@ -185,15 +186,31 @@ class FromRLBenchEnv(Env[NumpyArrayType, Dict[str, Any], Dict[str, Any], NumpyAr
         obs, reward, terminated = self.task_env.step(action)
         return self.transform_obs(obs), reward, terminated, False, {}
 
-    def reset(self, *, mask = None, seed = None, **kwargs):
+    def reset(self, *, mask = None, seed = None, target_demo : Optional[Demo] = None) -> Tuple[None, Dict[str, Any], Dict]:
         assert mask is None, "Masking not supported for a non-batched environment."
         if seed is not None:
             np.random.seed(seed=seed)
 
-        language_discriptions, obs = self.task_env.reset()
+        if target_demo is not None:
+            language_descriptions, obs = self.task_env.reset_to_demo(target_demo)
+        else:
+            language_descriptions, obs = self.task_env.reset()
         obs = self.transform_obs(obs)
         return None, obs, {}
     
+    def get_live_demos(
+        self,
+        amount : int,
+        max_attempts : int = 10,
+        callable_each_step: Optional[Callable[[Observation], None]] = None,
+    ) -> List[Demo]:
+        return self.task_env.get_demos(
+            amount,
+            live_demos=True,
+            max_attempts=max_attempts,
+            callable_each_step=callable_each_step,
+        )
+
     def render(self):
         if self.render_mode == 'rgb_array':
             frame = self.gym_cam.capture_rgb()
