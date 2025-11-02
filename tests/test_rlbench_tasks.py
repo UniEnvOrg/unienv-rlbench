@@ -1,3 +1,4 @@
+import traceback
 import pytest
 from rlbench.tasks import *
 from rlbench.action_modes.action_mode import *
@@ -21,14 +22,26 @@ def test_rlbench(
     obs_config,
     action_mode
 ):
-    env : FromRLBenchEnv = FromRLBenchEnv.create(
-        task_class=task_class,
-        obs_config=obs_config,
-        action_mode=action_mode,
-        render_mode='rgb_array'
-    )
+    try:
+        env : FromRLBenchEnv = FromRLBenchEnv.create(
+            task_class=task_class,
+            obs_config=obs_config,
+            action_mode=action_mode,
+            render_mode='rgb_array'
+        )
+    except Exception as e:
+        print("Failed to create environment.")
+        print(e)
+        print(traceback.format_exc())
+        raise e
     
-    ctx, obs, info = env.reset()
+    try:
+        ctx, obs, info = env.reset()
+    except Exception as e:
+        print("Failed to reset environment.")
+        print(e)
+        print(traceback.format_exc())
+        raise e
 
     assert (ctx is None and env.context_space is None) or env.context_space.contains(ctx)
     assert env.observation_space.contains(obs)
@@ -37,7 +50,13 @@ def test_rlbench(
     step_count = 0
     while not done and step_count < 100:
         action = env.sample_action()
-        obs, reward, terminated, truncated, info = env.step(action)
+        try:
+            obs, reward, terminated, truncated, info = env.step(action)
+        except Exception as e:
+            print("Error occurred while taking a step.")
+            print(e)
+            print(traceback.format_exc())
+            raise e
         assert env.observation_space.contains(obs)
         done = terminated or truncated
         step_count += 1

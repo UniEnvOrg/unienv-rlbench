@@ -83,7 +83,7 @@ class FromRLBenchEnv(Env[NumpyArrayType, Dict[str, Any], Dict[str, Any], NumpyAr
         task_class: Type[Task],
         obs_config : Optional[Union[ObservationConfig, Literal['state', 'vision']]] = 'state',
         action_mode : Optional[ActionMode] = None,
-        render_mode: Optional[Literal['human', 'rgb_array']] = None,
+        render_mode:Literal['human', 'rgb_array'] = 'rgb_array',
     ) -> 'FromRLBenchEnv':
         if not isinstance(obs_config, ObservationConfig):
             obs_conf = ObservationConfig()
