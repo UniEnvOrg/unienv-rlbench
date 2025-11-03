@@ -64,6 +64,25 @@ class FromRLBenchEnv(Env[NumpyArrayType, Dict[str, Any], Dict[str, Any], NumpyAr
                 raise ValueError(f"Unsupported data type in observation {state_name}: {type(state_data)}")
             out_obs[state_name] = new_state_data
         return out_obs
+
+    @staticmethod
+    def transform_obsspace(
+        obs : Dict[str, Any]
+    ) -> DictSpace:
+        obs_space : DictSpace = scu.construct_space_from_data(
+            obs,
+            NumpyComputeBackend,
+        )
+        for key, space in obs_space.spaces.items():
+            if "rgb" in key:
+                obs_space[key] = BoxSpace(
+                    NumpyComputeBackend,
+                    low=0,
+                    high=255,
+                    shape=space.shape,
+                    dtype=np.uint8,
+                )
+        return obs_space
     
     @staticmethod
     def transform_action(
@@ -150,21 +169,7 @@ class FromRLBenchEnv(Env[NumpyArrayType, Dict[str, Any], Dict[str, Any], NumpyAr
         self.context_space = None
         # We need to use a sample observation to construct the observation space
         _, sample_obs = self.task_env.reset()
-        sample_obs = self.transform_obs(sample_obs)
-        obs_space : DictSpace = scu.construct_space_from_data(
-            sample_obs,
-            NumpyComputeBackend,
-        )
-        for key, space in obs_space.spaces.items():
-            if "rgb" in key:
-                obs_space[key] = BoxSpace(
-                    NumpyComputeBackend,
-                    low=0,
-                    high=255,
-                    shape=space.shape,
-                    dtype=np.uint8,
-                )
-        self.observation_space = obs_space
+        self.observation_space = self.transform_obsspace(self.transform_obs(sample_obs))
 
         # Initialize RNG
         self.rng = NumpyComputeBackend.random.random_number_generator()
