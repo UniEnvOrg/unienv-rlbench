@@ -44,14 +44,20 @@ class FromRLBenchEnv(Env[NumpyArrayType, Dict[str, Any], Dict[str, Any], NumpyAr
                 continue
 
             if isinstance(state_data, np.ndarray):
-                new_state_data = np.float32(state_data)
+                if state_data.dtype.kind == 'f':
+                    new_state_data = np.float32(state_data)
+                else:
+                    new_state_data = state_data
             elif isinstance(state_data, (float, int)):
                 new_state_data = np.array([state_data], dtype=np.float32)
             elif isinstance(state_data, dict):
                 new_state_data = {}
                 for k, v in state_data.items():
                     if isinstance(v, np.ndarray):
-                        new_state_data[k] = np.float32(v)
+                        if v.dtype.kind == 'f':
+                            new_state_data[k] = np.float32(v)
+                        else:
+                            new_state_data[k] = v
                     elif isinstance(v, (float, int)):
                         new_state_data[k] = np.array([v], dtype=np.float32)
                     elif isinstance(v, Callable) or isinstance(v, List):
