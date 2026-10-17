@@ -7,7 +7,8 @@ from pyrep.const import RenderMode
 from rlbench.backend.task import Task
 from rlbench.observation_config import ObservationConfig
 from rlbench.action_modes.action_mode import ActionMode, MoveArmThenGripper
-from rlbench.action_modes.arm_action_modes import EndEffectorPoseViaIK, EndEffectorPoseViaPlanning
+from rlbench.action_modes.arm_action_modes import EndEffectorPoseViaIK, EndEffectorPoseViaPlanning, JointPosition, JointVelocity, JointTorque
+from rlbench.action_modes.gripper_action_modes import Discrete, GripperJointPosition
 from rlbench.backend.observation import Observation
 from rlbench.demo import Demo
 from rlbench.environment import Environment as RLBenchEnvironment
@@ -16,7 +17,10 @@ from rlbench.task_environment import TaskEnvironment as RLBenchTaskEnvironment
 from unienv_interface.backends.numpy import NumpyComputeBackend, NumpyArrayType, NumpyDeviceType, NumpyDtypeType, NumpyRNGType
 from unienv_interface.space import BoxSpace, DictSpace, TextSpace
 from unienv_interface.space.space_utils import construct_utils as scu
+from unienv_interface.space.space_utils.metadata_utils import annotate
 from unienv_interface.env_base.env import Env
+
+from .space_metadata import RLBENCH_CAMERAS, rlbench_observation_metadata, rlbench_action_metadata
 
 __all__ = ['FromRLBenchEnv']
 
@@ -90,6 +94,38 @@ class FromRLBenchEnv(Env[NumpyArrayType, Dict[str, Any], Dict[str, Any], NumpyAr
                 )
         return obs_space
     
+    @staticmethod
+    def describe_action_mode(action_mode: ActionMode) -> Dict[str, Any]:
+        """Keyword arguments of :func:`rlbench_action_metadata` describing ``action_mode``."""
+        arm_mode = getattr(action_mode, "arm_action_mode", None)
+        gripper_mode = getattr(action_mode, "gripper_action_mode", None)
+        description: Dict[str, Any] = {"arm": None}
+        if isinstance(arm_mode, (EndEffectorPoseViaIK, EndEffectorPoseViaPlanning)):
+            description.update(
+                arm="eef_pose",
+                absolute=getattr(arm_mode, "_absolute_mode", None),
+                frame=getattr(arm_mode, "_frame", None),
+            )
+        elif isinstance(arm_mode, JointPosition):
+            description.update(arm="joint_position", absolute=getattr(arm_mode, "_absolute_mode", None))
+        elif isinstance(arm_mode, JointVelocity):
+            description["arm"] = "joint_velocity"
+        elif isinstance(arm_mode, JointTorque):
+            description["arm"] = "joint_torque"
+        if isinstance(gripper_mode, Discrete):
+            description["gripper"] = "discrete"
+        elif isinstance(gripper_mode, GripperJointPosition):
+            description["gripper"] = "joint_position"
+        return description
+
+    def _depth_in_meters(self) -> Dict[str, Optional[bool]]:
+        """``CameraConfig.depth_in_meters`` of every camera of the observation config."""
+        obs_config = getattr(self.runtime_env, "_obs_config", None)
+        return {
+            camera: getattr(getattr(obs_config, f"{camera}_camera", None), "depth_in_meters", None)
+            for camera in RLBENCH_CAMERAS
+        }
+
     @staticmethod
     def transform_action(
         action_mode: ActionMode,
@@ -172,10 +208,19 @@ class FromRLBenchEnv(Env[NumpyArrayType, Dict[str, Any], Dict[str, Any], NumpyAr
             dtype=np.float32,
             shape=(self.runtime_env.action_shape),
         )
+        self.action_space = self.action_space.with_metadata(rlbench_action_metadata(
+            int(np.prod(self.action_space.shape)),
+            **self.describe_action_mode(task_env._action_mode),
+        ))
         self.context_space = None
         # We need to use a sample observation to construct the observation space
         _, sample_obs = self.task_env.reset()
-        self.observation_space = self.transform_obsspace(self.transform_obs(sample_obs))
+        sample_obs = self.transform_obs(sample_obs)
+        self.observation_space = annotate(
+            self.transform_obsspace(sample_obs),
+            rlbench_observation_metadata(sample_obs, depth_in_meters=self._depth_in_meters()),
+            strict=False,
+        )
 
         # Initialize RNG
         self.rng = NumpyComputeBackend.random.random_number_generator()
