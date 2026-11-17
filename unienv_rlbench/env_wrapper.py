@@ -141,6 +141,7 @@ class FromRLBenchEnv(Env[NumpyArrayType, Dict[str, Any], Dict[str, Any], NumpyAr
                 ], axis=-1)
         return action
 
+    @staticmethod
     def create(
         task_class: Type[Task],
         obs_config : Optional[Union[ObservationConfig, Literal['state', 'vision']]] = 'state',
@@ -174,7 +175,7 @@ class FromRLBenchEnv(Env[NumpyArrayType, Dict[str, Any], Dict[str, Any], NumpyAr
         self,
         runtime_env:RLBenchEnvironment,
         task_env: RLBenchTaskEnvironment,
-        render_mode: Literal['human', 'rgb_array'] = 'rgb',
+        render_mode: Literal['human', 'rgb_array'] = 'rgb_array',
     ):
         self.runtime_env = runtime_env
         self.task_env = task_env

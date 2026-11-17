@@ -1,13 +1,12 @@
 """RLBench space metadata on synthetic observations (no RLBench / CoppeliaSim needed).
 
-``unienv_rlbench/__init__.py`` imports the PyRep-based wrapper, so the
-dependency-free ``space_metadata`` module is loaded from its file directly.
-The synthetic observation follows the layout ``FromRLBenchEnv.transform_obs``
+``space_metadata`` and the package import do not need RLBench / PyRep (the
+PyRep-based ``FromRLBenchEnv`` is imported on first access). The synthetic observation follows the layout ``FromRLBenchEnv.transform_obs``
 produces from an ``rlbench.backend.observation.Observation``.
 """
 
-import importlib.util
-import os
+import subprocess
+import sys
 
 import numpy as np
 import pytest
@@ -17,12 +16,7 @@ from unienv_interface.space import BoxSpace
 from unienv_interface.space.space_utils import construct_utils as scu
 from unienv_interface.space.space_utils.metadata_utils import annotate, validate_metadata
 
-_spec = importlib.util.spec_from_file_location(
-    "unienv_rlbench_space_metadata",
-    os.path.join(os.path.dirname(__file__), "..", "unienv_rlbench", "space_metadata.py"),
-)
-space_metadata = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(space_metadata)
+from unienv_rlbench import space_metadata
 
 H, W = 8, 10
 
@@ -154,3 +148,13 @@ def test_action_metadata_unknown_modes_stay_generic():
     md = space_metadata.rlbench_action_metadata(9, arm="eef_pose", absolute=True, gripper="discrete")
     assert "names" not in md and "units" not in md
     validate_metadata(BoxSpace(NumpyComputeBackend, -1.0, 1.0, np.float32, shape=(9,), metadata=md))
+
+
+def test_package_import_does_not_load_rlbench_or_pyrep():
+    code = (
+        "import sys, unienv_rlbench\n"
+        "from unienv_rlbench import rlbench_observation_metadata, RLBENCH_CAMERAS\n"
+        "assert 'pyrep' not in sys.modules and 'rlbench' not in sys.modules, sorted(sys.modules)\n"
+        "assert 'FromRLBenchEnv' in unienv_rlbench.__all__\n"
+    )
+    subprocess.run([sys.executable, "-c", code], check=True)
