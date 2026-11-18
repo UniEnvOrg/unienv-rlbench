@@ -73,6 +73,13 @@ class FromRLBenchEnv(Env[NumpyArrayType, Dict[str, Any], Dict[str, Any], NumpyAr
             else:
                 raise ValueError(f"Unsupported data type in observation {state_name}: {type(state_data)}")
             out_obs[state_name] = new_state_data
+        # RLBench adds the demo recorder's joint_position_action to misc once live
+        # demos have been collected, and keeps it on every later observation: it is
+        # not an observation (the Demo objects still carry it), and it would make
+        # observations stop matching the observation space built at construction.
+        misc = out_obs.get("misc")
+        if isinstance(misc, dict):
+            misc.pop("joint_position_action", None)
         return out_obs
 
     @staticmethod

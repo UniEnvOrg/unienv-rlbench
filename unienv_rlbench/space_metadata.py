@@ -19,8 +19,8 @@ Conventions (RLBench / PyRep):
 - Joint positions / velocities / forces of the arm in rad / rad/s / N*m.
 - ``misc``: per-camera ``*_camera_extrinsics`` (4x4 camera pose in the world
   frame), ``*_camera_intrinsics`` (3x3), ``*_camera_near`` / ``*_camera_far``
-  (m), plus ``variation_index`` and, during demo collection,
-  ``joint_position_action``.
+  (m), plus ``variation_index`` and, in the observations of recorded demos,
+  ``joint_position_action`` (``FromRLBenchEnv`` drops it from env observations).
 """
 
 from typing import Any, Dict, Mapping, Optional, Sequence

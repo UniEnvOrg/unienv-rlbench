@@ -1,4 +1,5 @@
 import traceback
+import numpy as np
 import pytest
 from rlbench.tasks import *
 from rlbench.action_modes.action_mode import *
@@ -63,3 +64,39 @@ def test_rlbench(
 
     assert step_count > 0
     env.close()
+
+def test_observations_match_the_space_after_live_demos():
+    # RLBench keeps adding misc/joint_position_action to observations once live demos
+    # were collected; the env's observations must still match its observation space.
+    env = FromRLBenchEnv.create(
+        task_class=ReachTarget, obs_config='state', action_mode=JointPositionActionMode(),
+    )
+    try:
+        demo = env.get_live_demos(1)[0]
+        assert len(demo) > 0
+        _, obs, _ = env.reset(target_demo=demo)
+        assert env.observation_space.contains(obs)
+        _, obs, _ = env.reset()
+        assert env.observation_space.contains(obs)
+        obs, *_ = env.step(env.sample_action())
+        assert env.observation_space.contains(obs)
+    finally:
+        env.close()
+
+
+def test_render_mode_defaults_to_rgb_array():
+    from rlbench.environment import Environment
+    from rlbench.observation_config import ObservationConfig
+
+    obs_config = ObservationConfig()
+    obs_config.set_all_high_dim(False)
+    obs_config.set_all_low_dim(True)
+    runtime = Environment(action_mode=JointPositionActionMode(), obs_config=obs_config, headless=True)
+    runtime.launch()
+    env = FromRLBenchEnv(runtime, runtime.get_task(ReachTarget))
+    try:
+        assert env.render_mode == 'rgb_array'
+        frame = env.render()
+        assert frame.dtype == np.uint8 and frame.ndim == 3 and frame.shape[-1] == 3
+    finally:
+        env.close()
