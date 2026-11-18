@@ -11,6 +11,12 @@ __all__ = ["FromRLBenchEnv", *_space_metadata_all]
 
 def __getattr__(name):
     if name == "FromRLBenchEnv":
-        from .env_wrapper import FromRLBenchEnv
+        try:
+            from .env_wrapper import FromRLBenchEnv
+        except ImportError as error:
+            raise ImportError(
+                "FromRLBenchEnv needs RLBench, PyRep and CoppeliaSim 4.1, which are not on PyPI: "
+                "see https://github.com/UniEnvOrg/unienv-rlbench#installation"
+            ) from error
         return FromRLBenchEnv
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

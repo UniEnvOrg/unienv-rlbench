@@ -1,6 +1,10 @@
+"""FromRLBenchEnv in CoppeliaSim (skipped without RLBench; run headless with xvfb-run)."""
 import traceback
 import numpy as np
 import pytest
+
+pytest.importorskip("rlbench")
+
 from rlbench.tasks import *
 from rlbench.action_modes.action_mode import *
 from rlbench.action_modes.arm_action_modes import *
@@ -98,5 +102,50 @@ def test_render_mode_defaults_to_rgb_array():
         assert env.render_mode == 'rgb_array'
         frame = env.render()
         assert frame.dtype == np.uint8 and frame.ndim == 3 and frame.shape[-1] == 3
+    finally:
+        env.close()
+
+
+def test_seeded_resets_are_reproducible():
+    env = FromRLBenchEnv.create(task_class=ReachTarget, obs_config='state', action_mode=JointPositionActionMode())
+    try:
+        ctx_first, first, info_first = env.reset(seed=5)
+        _, other, _ = env.reset(seed=6)
+        env.step(env.sample_action())
+        ctx_second, second, info_second = env.reset(seed=5)
+        # The episode (object placement, variation, instruction) is reproduced exactly ...
+        np.testing.assert_array_equal(first['task_low_dim_state'], second['task_low_dim_state'])
+        assert (ctx_first, info_first) == (ctx_second, info_second)
+        assert not np.array_equal(first['task_low_dim_state'], other['task_low_dim_state'])
+        # ... the robot up to CoppeliaSim's leftover dynamics
+        np.testing.assert_allclose(first['joint_positions'], second['joint_positions'], atol=2e-3)
+        np.testing.assert_allclose(first['gripper_pose'], second['gripper_pose'], atol=1e-3)
+    finally:
+        env.close()
+
+
+def test_context_is_the_instruction_and_variations_can_be_sampled():
+    env = FromRLBenchEnv.create(
+        task_class=ReachTarget, obs_config='state', action_mode=JointPositionActionMode(), variation='random',
+    )
+    try:
+        variations = set()
+        for seed in range(6):
+            ctx, obs, info = env.reset(seed=seed)
+            assert env.context_space.contains(ctx) and ctx == info['descriptions'][0]
+            variations.add(info['variation'])
+        assert len(variations) > 1
+    finally:
+        env.close()
+
+
+def test_truncation_after_max_episode_steps():
+    env = FromRLBenchEnv.create(
+        task_class=ReachTarget, obs_config='state', action_mode=JointPositionActionMode(), max_episode_steps=3,
+    )
+    try:
+        env.reset(seed=0)
+        flags = [env.step(np.zeros(env.action_space.shape, np.float32))[3] for _ in range(3)]
+        assert flags == [False, False, True]
     finally:
         env.close()

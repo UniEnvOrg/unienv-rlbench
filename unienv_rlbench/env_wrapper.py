@@ -1,4 +1,5 @@
 from typing import Optional, Tuple, Dict, Any, Callable, List, Type, Literal, Union
+import random
 import numpy as np
 
 from pyrep.objects.dummy import Dummy
@@ -17,7 +18,7 @@ from rlbench.task_environment import TaskEnvironment as RLBenchTaskEnvironment
 from unienv_interface.backends.numpy import NumpyComputeBackend, NumpyArrayType, NumpyDeviceType, NumpyDtypeType, NumpyRNGType
 from unienv_interface.space import BoxSpace, DictSpace, TextSpace
 from unienv_interface.space.space_utils import construct_utils as scu
-from unienv_interface.space.space_utils.metadata_utils import annotate
+from unienv_interface.space.space_utils.metadata_utils import annotate, metadata
 from unienv_interface.env_base.env import Env
 
 from .space_metadata import RLBENCH_CAMERAS, rlbench_observation_metadata, rlbench_action_metadata
@@ -154,7 +155,10 @@ class FromRLBenchEnv(Env[NumpyArrayType, Dict[str, Any], Dict[str, Any], NumpyAr
         obs_config : Optional[Union[ObservationConfig, Literal['state', 'vision']]] = 'state',
         action_mode : Optional[ActionMode] = None,
         render_mode:Literal['human', 'rgb_array'] = 'rgb_array',
+        max_episode_steps : Optional[int] = None,
+        variation : Union[int, Literal['random']] = 0,
     ) -> 'FromRLBenchEnv':
+        """Launch CoppeliaSim headless and wrap ``task_class`` (see ``__init__`` for the other arguments)."""
         if not isinstance(obs_config, ObservationConfig):
             obs_conf = ObservationConfig()
             if obs_config == 'state':
@@ -176,6 +180,8 @@ class FromRLBenchEnv(Env[NumpyArrayType, Dict[str, Any], Dict[str, Any], NumpyAr
             rlbench_env,
             rlbench_task_env,
             render_mode=render_mode,
+            max_episode_steps=max_episode_steps,
+            variation=variation,
         )
 
     def __init__(
@@ -183,9 +189,24 @@ class FromRLBenchEnv(Env[NumpyArrayType, Dict[str, Any], Dict[str, Any], NumpyAr
         runtime_env:RLBenchEnvironment,
         task_env: RLBenchTaskEnvironment,
         render_mode: Literal['human', 'rgb_array'] = 'rgb_array',
+        max_episode_steps: Optional[int] = None,
+        variation: Union[int, Literal['random']] = 0,
     ):
+        """
+        Args:
+            max_episode_steps: Steps after which an episode is truncated (``None``: no limit).
+            variation: Task variation of every episode, or ``'random'`` to sample one at
+                each reset (from the seeded global NumPy RNG RLBench draws from).
+        """
         self.runtime_env = runtime_env
         self.task_env = task_env
+        self.max_episode_steps = max_episode_steps or None
+        if variation == 'random':
+            self._sample_variation = True
+        else:
+            self._sample_variation = False
+            self.task_env.set_variation(int(variation))
+        self._steps = 0
 
         self.backend = NumpyComputeBackend
         self.device = None
@@ -220,7 +241,11 @@ class FromRLBenchEnv(Env[NumpyArrayType, Dict[str, Any], Dict[str, Any], NumpyAr
             int(np.prod(self.action_space.shape)),
             **self.describe_action_mode(task_env._action_mode),
         ))
-        self.context_space = None
+        # The context is the episode's language instruction (the first of RLBench's descriptions)
+        self.context_space = TextSpace(
+            NumpyComputeBackend, max_length=1024,
+            metadata=metadata("task", label="language instruction of the episode"),
+        )
         # We need to use a sample observation to construct the observation space
         _, sample_obs = self.task_env.reset()
         sample_obs = self.transform_obs(sample_obs)
@@ -248,19 +273,40 @@ class FromRLBenchEnv(Env[NumpyArrayType, Dict[str, Any], Dict[str, Any], NumpyAr
     def step(self, action):
         action = self.transform_action(self.task_env._action_mode, action)
         obs, reward, terminated = self.task_env.step(action)
-        return self.transform_obs(obs), reward, terminated, False, {}
+        self._steps += 1
+        terminated = bool(terminated)
+        truncated = (not terminated) and self.max_episode_steps is not None and self._steps >= self.max_episode_steps
+        return self.transform_obs(obs), float(reward), terminated, truncated, {"success": terminated}
 
-    def reset(self, *, mask = None, seed = None, target_demo : Optional[Demo] = None) -> Tuple[None, Dict[str, Any], Dict]:
+    def reset(self, *, mask = None, seed = None, target_demo : Optional[Demo] = None) -> Tuple[str, Dict[str, Any], Dict]:
+        """Start an episode; the context is its language instruction.
+
+        RLBench places objects (and samples variations) with the global NumPy RNG:
+        ``seed`` seeds it, and Python's ``random``, so the same seed gives the same episode
+        (object placement, variation and instruction). The robot's proprioception may still
+        differ slightly between resets (e.g. ~1e-4 rad joint positions, ~1e-3 rad/s joint
+        velocities): CoppeliaSim keeps some dynamics state across RLBench's robot reset.
+        ``info`` holds all of RLBench's ``descriptions`` and the ``variation``.
+        """
         assert mask is None, "Masking not supported for a non-batched environment."
         if seed is not None:
             np.random.seed(seed=seed)
+            random.seed(seed)
+            self.rng = NumpyComputeBackend.random.random_number_generator(seed)
+        if self._sample_variation and target_demo is None:
+            self.task_env.sample_variation()
 
         if target_demo is not None:
             language_descriptions, obs = self.task_env.reset_to_demo(target_demo)
         else:
             language_descriptions, obs = self.task_env.reset()
         obs = self.transform_obs(obs)
-        return None, obs, {}
+        self._steps = 0
+        info = {
+            "descriptions": list(language_descriptions),
+            "variation": int(self.task_env._variation_number),
+        }
+        return str(language_descriptions[0]), obs, info
     
     def get_live_demos(
         self,

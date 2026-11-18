@@ -158,3 +158,17 @@ def test_package_import_does_not_load_rlbench_or_pyrep():
         "assert 'FromRLBenchEnv' in unienv_rlbench.__all__\n"
     )
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+def test_missing_rlbench_raises_an_install_hint():
+    code = (
+        "import importlib.util, sys\n"
+        "if importlib.util.find_spec('rlbench') is not None: sys.exit(0)\n"
+        "try:\n"
+        "    from unienv_rlbench import FromRLBenchEnv\n"
+        "except ImportError as error:\n"
+        "    assert 'unienv-rlbench#installation' in str(error), error\n"
+        "else:\n"
+        "    raise AssertionError('expected an ImportError')\n"
+    )
+    subprocess.run([sys.executable, "-c", code], check=True)

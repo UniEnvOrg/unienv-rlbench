@@ -1,16 +1,30 @@
 [project]
 name = "unienv_rlbench"
 version = "0.0.1a1"
+description = "RLBench tasks as UniEnv environments, with space metadata"
+readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">= 3.10"
+# RLBench, PyRep and CoppeliaSim are not on PyPI (the `pyrep` package there is unrelated):
+# install them as described in the README.
 dependencies = [
     "unienv>=0.0.1b16",
-    "rlbench"
+    "numpy",
 ]
 
 [project.optional-dependencies]
+test = ["pytest"]
 
+[project.urls]
+Homepage = "https://github.com/UniEnvOrg/unienv-rlbench"
+Documentation = "https://github.com/UniEnvOrg/unienv-rlbench"
+Repository = "https://github.com/UniEnvOrg/unienv-rlbench"
+Issues = "https://github.com/UniEnvOrg/unienv-rlbench/issues"
+Changelog = "https://github.com/UniEnvOrg/unienv-rlbench/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 include = ["*"]
 exclude = ["training*", "tests*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
